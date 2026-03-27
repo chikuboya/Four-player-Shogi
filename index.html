@@ -3,17 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>四人将棋 (戦略AI・順位判定版)</title>
+    <title>四人将棋 (戦略AI・戻るボタン修正版)</title>
     <style>
-        /* 全体レイアウト */
-        body { display: flex; flex-direction: column; align-items: flex-start; background: #d2c1a3; font-family: sans-serif; margin: 0; padding: 10px; overflow-x: auto; }
-        
-        /* メニュー画面のスタイル（ここを修正しました） */
-        #menu { background: #fdf5e6; padding: 20px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #5d3a1a; width: 300px; }
-        .setup-row { margin-bottom: 12px; border-bottom: 1px solid #ccc; padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
-        
-        /* ゲーム画面 */
-        #game-screen { display: none; position: relative; background: #fdf5e6; padding: 10px; border-radius: 8px; }
+        body { display: flex; flex-direction: column; align-items: flex-start; background: #d2c1a3; font-family: sans-serif; margin: 0; padding: 5px; overflow-x: auto; }
+        #menu, #game-screen { background: #fdf5e6; padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+        #game-screen { display: none; position: relative; }
         
         .top-controls { margin-bottom: 10px; display: flex; gap: 10px; align-items: center; width: 100%; justify-content: space-between; }
         #status { font-weight: bold; background: white; padding: 6px 12px; border-radius: 4px; border: 2px solid #5d3a1a; font-size: 14px; flex-grow: 1; text-align: center; }
@@ -21,22 +15,31 @@
         button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 13px; color: white; }
         .btn-reset { background: #666; }
         .btn-undo { background: #556b2f; width: 242px; margin-top: 8px; }
-        .btn-start { background: #8b4513; width: 100%; margin-top: 15px; font-size: 16px; height: 40px; }
+        .btn-start { background: #8b4513; width: 100%; margin-top: 10px; }
 
-        /* ダイアログ類 */
         #promote-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; border: 4px solid #8b4513; border-radius: 10px; z-index: 1000; text-align: center; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
         .promote-btn { margin: 10px; font-size: 18px; padding: 10px 20px; }
         .btn-yes { background: #d00; } .btn-no { background: #666; }
         
-        /* 演出メッセージ */
-        #msg-overlay { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; text-align: center; width: 100%; }
-        .out-msg { color: #ffff00; font-size: 48px; font-weight: bold; text-shadow: 3px 3px 0 #000, -2px -2px 0 #000; animation: fadeOut 2s forwards; white-space: nowrap; }
-        .win-msg { color: #ff0000; font-size: 50px; font-weight: bold; background: rgba(255,255,255,0.95); padding: 20px; border: 6px double #ff0000; border-radius: 15px; box-shadow: 0 0 30px rgba(0,0,0,0.3); animation: bounce 0.5s infinite alternate; pointer-events: auto; }
+        #msg-overlay { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; text-align: center; width: 100%; }
+        
+        .out-msg { 
+            color: #ffff00; font-size: 48px; font-weight: bold; 
+            text-shadow: 3px 3px 0 #000, -2px -2px 0 #000; 
+            animation: fadeOut 2s forwards; white-space: nowrap; 
+        }
+        
+        .win-msg { 
+            color: #ff0000; font-size: 60px; font-weight: bold; 
+            background: rgba(255,255,255,0.9); padding: 20px 40px; 
+            border: 6px double #ff0000; border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            animation: bounce 0.5s infinite alternate;
+        }
         
         @keyframes fadeOut { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
-        @keyframes bounce { from { transform: scale(1); } to { transform: scale(1.05); } }
+        @keyframes bounce { from { transform: scale(1); } to { transform: scale(1.1); } }
         
-        /* 盤面・駒 */
         .main-game-layout { display: flex; align-items: flex-start; justify-content: flex-start; gap: 5px; }
         .west-area { display: flex; flex-direction: column; align-items: center; min-width: 55px; }
         .center-column { display: flex; flex-direction: column; align-items: center; gap: 5px; }
@@ -52,16 +55,16 @@
         .hand-selected { background: #ff4500 !important; color: white; }
         
         .p0 { color: #d00; } .p1 { color: #00d; transform: rotate(90deg); } .p2 { color: #080; transform: rotate(180deg); } .p3 { color: #d80; transform: rotate(270deg); }
-        .promoted { color: #ff0000 !important; } .dead-piece { opacity: 0.3; filter: grayscale(80%); } .label { font-size: 10px; font-weight: bold; color: #5d3a1a; margin: 0; }
+        .promoted { color: #ff0000 !important; } .dead-piece { opacity: 0.4; filter: grayscale(50%); } .label { font-size: 10px; font-weight: bold; color: #5d3a1a; margin: 0; }
+        .cpu-type-tag { display: none; }
     </style>
 </head>
 <body>
     <div id="menu">
-        <h2 style="margin:0 0 15px 0; color:#5d3a1a; text-align:center;">四人将棋 (戦略AI)</h2>
+        <h2 style="margin:0 0 10px 0;">四人将棋 (戦略AI)</h2>
         <div id="player-setup"></div>
         <button class="btn-start" onclick="startGame()">対局開始</button>
     </div>
-
     <div id="game-screen">
         <div id="promote-modal">
             <h3 style="margin-top:0;">成りますか？</h3>
@@ -76,14 +79,14 @@
         </div>
         
         <div class="main-game-layout">
-            <div class="west-area"><p class="label">西</p><div id="hand-1" class="hand hand-v"></div></div>
+            <div class="west-area"><p class="label">西 <span id="cpu-tag-1"></span></p><div id="hand-1" class="hand hand-v"></div></div>
             <div class="center-column">
-                <p class="label">北</p><div id="hand-2" class="hand hand-h"></div>
+                <p class="label">北 <span id="cpu-tag-2"></span></p><div id="hand-2" class="hand hand-h"></div>
                 <div id="board"></div>
-                <div id="hand-0" class="hand hand-h"></div><p class="label">南</p>
+                <div id="hand-0" class="hand hand-h"></div><p class="label">南 <span id="cpu-tag-0"></span></p>
                 <button class="btn-undo" onclick="undo()">一手戻る</button>
             </div>
-            <div style="display:flex; flex-direction:column; align-items:center;"><p class="label">東</p><div id="hand-3" class="hand hand-v"></div></div>
+            <div style="display:flex; flex-direction:column; align-items:center;"><p class="label">東 <span id="cpu-tag-3"></span></p><div id="hand-3" class="hand hand-v"></div></div>
         </div>
     </div>
 
@@ -97,287 +100,20 @@ const PLAYERS = [{ name: "南", class: "p0" }, { name: "西", class: "p1" }, { n
 // --- ゲーム状態 ---
 let board = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
 let hands = [[], [], [], []];
-let turn = 0, isDead = [false, false, false, false], playerTypes = [], initialMainPieces = [];
+let turn = 0, isDead = [false, false, false, false], playerTypes = [], cpuPersonalities = [], initialMainPieces = [];
 let history = [], selected = null, selectedHand = null, cpuTimer = null, isPausedByUndo = false;
+let memo = new Map();
 
 // --- 初期化 ---
 function initMenu() {
     const container = document.getElementById('player-setup');
     PLAYERS.forEach((p, i) => {
-        container.innerHTML += `<div class="setup-row">
-            <span class="${p.class}" style="font-weight:bold;">${p.name}</span>
+        container.innerHTML += `<div style="margin-bottom:8px; border-bottom: 1px solid #ccc; padding-bottom: 5px;">
+            <span class="${p.class}" style="font-weight:bold; width:30px; display:inline-block;">${p.name}</span>
             <select id="p-type-${i}"><option value="human" ${i===0?'selected':''}>人間</option><option value="cpu" ${i!==0?'selected':''}>CPU</option></select>
             <select id="p-piece-${i}"><option value="飛">飛車</option><option value="角">角行</option></select>
         </div>`;
     });
-}
-
-function startGame() {
-    for(let i=0; i<4; i++) {
-        playerTypes[i] = document.getElementById(`p-type-${i}`).value;
-        initialMainPieces[i] = document.getElementById(`p-piece-${i}`).value;
-    }
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('game-screen').style.display = 'block';
-    initBoard();
-    if(playerTypes[turn] === "cpu") startCpuThink();
-    updateStatus();
-}
-
-function initBoard() {
-    const s = (r, c, t, o) => { board[r][c] = { type: t, owner: o, promoted: false }; };
-    s(8,4,"玉",0); s(8,3,"金",0); s(8,5,"金",0); s(8,2,"銀",0); s(8,6,"銀",0); s(7,4,initialMainPieces[0],0); s(7,3,"歩",0); s(7,5,"歩",0); s(6,4,"歩",0);
-    s(4,0,"玉",1); s(3,0,"金",1); s(5,0,"金",1); s(2,0,"銀",1); s(6,0,"銀",1); s(4,1,initialMainPieces[1],1); s(3,1,"歩",1); s(5,1,"歩",1); s(4,2,"歩",1);
-    s(0,4,"玉",2); s(0,5,"金",2); s(0,3,"金",2); s(0,6,"銀",2); s(0,2,"銀",2); s(1,4,initialMainPieces[2],2); s(1,3,"歩",2); s(1,5,"歩",2); s(2,4,"歩",2);
-    s(4,8,"玉",3); s(5,8,"金",3); s(3,8,"金",3); s(6,8,"銀",3); s(2,8,"銀",3); s(4,7,initialMainPieces[3],3); s(5,7,"歩",3); s(3,7,"歩",3); s(4,6,"歩",3);
-    render();
-}
-
-// --- AI ロジック (簡易化) ---
-function startCpuThink() {
-    if(isPausedByUndo) return;
-    clearTimeout(cpuTimer);
-    cpuTimer = setTimeout(() => {
-        const moves = getAllMoves(board, turn, hands[turn]);
-        if(moves.length === 0) { executeMove({type:'pass'}); return; }
-        // 駒を取る手を優先する簡易AI
-        moves.sort((a,b) => {
-            let scoreA = a.type==='move' && board[a.tr][a.tc] ? PIECE_VAL[board[a.tr][a.tc].type] : 0;
-            let scoreB = b.type==='move' && board[b.tr][b.tc] ? PIECE_VAL[board[b.tr][b.tc].type] : 0;
-            return scoreB - scoreA;
-        });
-        executeMove(moves[0]);
-    }, 800);
-}
-
-// --- 操作・判定機能 ---
-
-async function executeMove(m) {
-    if(!m) return;
-    history.push(JSON.stringify({ board, hands, turn, isDead }));
-    isPausedByUndo = false;
-    
-    if (m.type === 'move') {
-        const p = board[m.fr][m.fc];
-        const isZone = (r, c, o) => (o===0?r<=2 : o===1?c>=6 : o===2?r>=6 : c<=2);
-        if (!p.promoted && PROMOTE_MAP[p.type] && (isZone(m.tr, m.tc, turn) || isZone(m.fr, m.fc, turn))) {
-            let res = (playerTypes[turn] === "human") ? await new Promise(r => {
-                const modal = document.getElementById('promote-modal'); modal.style.display = 'block';
-                document.getElementById('btn-promote-yes').onclick = () => { modal.style.display='none'; r(true); };
-                document.getElementById('btn-promote-no').onclick = () => { modal.style.display='none'; r(false); };
-            }) : true;
-            if (res) { p.type = PROMOTE_MAP[p.type]; p.promoted = true; }
-        }
-    }
-
-    const res = simMoveFast(board, m, turn, hands, isDead);
-    board = res.b; hands = res.h; 
-    
-    res.d.forEach((dead, idx) => {
-        if (dead && !isDead[idx]) showBigMsg(`${PLAYERS[idx].name} 陥落！`, "out");
-    });
-    isDead = res.d;
-
-    const survivors = isDead.map((dead, idx) => dead ? null : idx).filter(v => v !== null);
-
-    // 終局・順位判定
-    const finalizeGame = () => {
-        const rankings = PLAYERS.map((p, i) => ({
-            name: p.name,
-            kings: hands[i].filter(h => h === "玉").length,
-            alive: !isDead[i],
-            id: i
-        }));
-        // 王の数 > 生存 > ID順
-        rankings.sort((a, b) => b.kings - a.kings || (b.alive ? 1 : 0) - (a.alive ? 1 : 0));
-        let resultText = "【最終順位】\n";
-        rankings.forEach((r, idx) => {
-            resultText += `${idx + 1}位: ${r.name} (王:${r.kings}枚${r.alive ? "" : "/陥落"})\n`;
-        });
-        render();
-        showBigMsg(`${rankings[0].name} 勝利！`, "win", resultText);
-    };
-
-    if (survivors.length === 2) {
-        const pA = survivors[0], pB = survivors[1];
-        const countA = hands[pA].filter(p => p === "玉").length;
-        const countB = hands[pB].filter(p => p === "玉").length;
-        if (countA !== countB) { finalizeGame(); return; } 
-        else { showBigMsg("サドンデス突入！", "out"); }
-    }
-
-    if (survivors.length === 1) { finalizeGame(); return; }
-
-    turn = (turn + 1) % 4;
-    while (isDead[turn] && survivors.length > 1) turn = (turn + 1) % 4;
-    
-    selected = null; selectedHand = null; render();
-    if (survivors.length > 1 && playerTypes[turn] === "cpu") startCpuThink();
-}
-
-function undo() {
-    if (history.length === 0) return;
-    clearTimeout(cpuTimer);
-    const last = JSON.parse(history.pop());
-    board = last.board; hands = last.hands; turn = last.turn; isDead = last.isDead;
-    isPausedByUndo = true; selected = null; selectedHand = null; render();
-}
-
-function handleClick(r, c) {
-    if (playerTypes[turn] !== "human" || isDead[turn]) return;
-    if (selectedHand !== null) {
-        const pieceType = hands[turn][selectedHand];
-        if (pieceType === "玉") { selectedHand = null; render(); return; }
-        if (!board[r][c]) executeMove({ type: 'drop', handIdx: selectedHand, tr: r, tc: c });
-        else { selectedHand = null; render(); }
-        return;
-    }
-    if (selected) {
-        if (canMove(board[selected.r][selected.c], selected.r, selected.c, r, c, board)) {
-            executeMove({ type: 'move', fr: selected.r, fc: selected.c, tr: r, tc: c });
-        } else {
-            const p = board[r][c];
-            if (p && p.owner === turn) { selected = { r, c }; render(); }
-            else { selected = null; render(); }
-        }
-    } else {
-        const p = board[r][c];
-        if (p && p.owner === turn) { selected = { r, c }; render(); }
-    }
-}
-
-function render() {
-    const bEl = document.getElementById('board'); bEl.innerHTML = '';
-    board.forEach((row, r) => row.forEach((p, c) => {
-        const cell = document.createElement('div'); cell.className = 'cell';
-        if (p) {
-            cell.textContent = p.type; cell.classList.add(PLAYERS[p.owner].class);
-            if (p.promoted) cell.classList.add('promoted');
-            if (isDead[p.owner]) cell.classList.add('dead-piece');
-        }
-        if (selected && selected.r === r && selected.c === c) cell.classList.add('selected');
-        cell.onclick = () => handleClick(r, c); bEl.appendChild(cell);
-    }));
-    for (let i=0; i<4; i++) {
-        const hEl = document.getElementById(`hand-${i}`); hEl.innerHTML = '';
-        hands[i].forEach((type, idx) => {
-            const d = document.createElement('div'); d.className = 'hand-piece ' + PLAYERS[i].class; d.textContent = type;
-            if (type === "玉") {
-                d.style.opacity = "0.3"; d.style.background = "#aaa"; d.style.cursor = "default";
-            } else {
-                if (turn === i && selectedHand === idx) d.classList.add('hand-selected');
-                d.onclick = (e) => { e.stopPropagation(); if(turn===i && playerTypes[i]==="human") { selected=null; selectedHand=(selectedHand===idx)?null:idx; render(); }};
-            }
-            hEl.appendChild(d);
-        });
-    }
-    updateStatus();
-}
-
-function updateStatus() {
-    const s = document.getElementById('status');
-    const survivors = isDead.filter(x => !x);
-    if (survivors.length === 1) { s.textContent = `終局`; return; }
-    const kingInfo = PLAYERS.map((p, i) => `${p.name}:${hands[i].filter(h=>h==="玉").length}`).join(" ");
-    s.textContent = `${PLAYERS[turn].name}の番 (王奪取:${kingInfo})`;
-}
-
-function canMove(p, fr, fc, tr, tc, b) {
-    if (b[tr][tc] && b[tr][tc].owner === p.owner) return false;
-    const dr = tr-fr, dc = tc-fc, adr = Math.abs(dr), adc = Math.abs(dc);
-    const f = [[-1, 0], [0, 1], [1, 0], [0, -1]][p.owner];
-    if (p.type === "歩") return dr === f[0] && dc === f[1];
-    if (p.type === "玉") return adr <= 1 && adc <= 1;
-    if (p.type === "銀") return (adr === 1 && adc === 1) || (dr === f[0] && dc === f[1]);
-    if (p.type === "金" || p.type === "と" || p.type === "全") {
-        if (adr > 1 || adc > 1) return false;
-        return !((dr===-f[0]-f[1] && dc===-f[1]+f[0]) || (dr===-f[0]+f[1] && dc===-f[1]-f[0]));
-    }
-    if (p.type === "飛" || p.type === "龍") {
-        if (dr === 0 || dc === 0) {
-            const sR = dr===0?0:dr/adr, sC = dc===0?0:dc/adc;
-            let cr=fr+sR, cc=fc+sC;
-            while(cr!==tr || cc!==tc) { if(b[cr][cc]) return false; cr+=sR; cc+=sC; }
-            return true;
-        }
-        return p.type === "龍" && adr === 1 && adc === 1;
-    }
-    if (p.type === "角" || p.type === "馬") {
-        if (adr === adc) {
-            const sR = dr/adr, sC = dc/adc;
-            let cr=fr+sR, cc=fc+sC;
-            while(cr!==tr || cc!==tc) { if(b[cr][cc]) return false; cr+=sR; cc+=sC; }
-            return true;
-        }
-        return p.type === "馬" && adr <= 1 && adc <= 1;
-    }
-    return false;
-}
-
-function getAllMoves(b, t, h) {
-    let m = [];
-    for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-        const p = b[r][c];
-        if (p && p.owner === t) {
-            for (let tr = 0; tr < SIZE; tr++) for (let tc = 0; tc < SIZE; tc++) {
-                if (canMove(p, r, c, tr, tc, b)) m.push({type:'move', fr:r, fc:c, tr, tc});
-            }
-        }
-    }
-    h.forEach((type, idx) => {
-        if (type === "玉") return;
-        for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) {
-            if (!b[r][c]) m.push({type: 'drop', handIdx: idx, tr: r, tc: c});
-        }
-    });
-    return m;
-}
-
-function simMoveFast(b, m, t, h, d) {
-    const nb = b.map(row => row.slice());
-    const nh = h.map(hand => hand.slice());
-    const nd = [...d];
-    if (m.type === 'move') {
-        const p = { ...nb[m.fr][m.fc] };
-        const target = nb[m.tr][m.tc];
-        if (target) {
-            if (target.type === "玉") { nd[target.owner] = true; nh[t].push("玉"); }
-            else {
-                let typeToAdd = target.type;
-                if (target.promoted) {
-                    const rev = { "と": "歩", "全": "銀", "龍": "飛", "馬": "角" };
-                    typeToAdd = rev[target.type] || target.type;
-                }
-                nh[t].push(typeToAdd);
-            }
-        }
-        nb[m.tr][m.tc] = p; nb[m.fr][m.fc] = null;
-    } else if (m.type === 'drop') {
-        nb[m.tr][m.tc] = { type: nh[t][m.handIdx], owner: t, promoted: false };
-        nh[t].splice(m.handIdx, 1);
-    }
-    return { b: nb, h: nh, d: nd };
-}
-
-function showBigMsg(text, type = "out", subText = "") {
-    const overlay = document.getElementById('msg-overlay');
-    overlay.innerHTML = '';
-    const div = document.createElement('div');
-    div.className = type === "win" ? "win-msg" : "out-msg";
-    const main = document.createElement('div'); main.textContent = text; div.appendChild(main);
-    if (subText) {
-        const sub = document.createElement('div');
-        sub.style.fontSize = "18px"; sub.style.marginTop = "15px"; sub.style.color = "#333"; sub.style.fontWeight = "normal"; sub.style.textAlign = "left";
-        sub.innerText = subText; div.appendChild(sub);
-    }
-    overlay.appendChild(div);
-    if (type !== "win") setTimeout(() => div.remove(), 2000);
-}
-
-initMenu();
-</script>
-</body>
-</html>
 }
 
 function startGame() {
@@ -517,7 +253,6 @@ function minimax(b, t, depth, alpha, beta, me, h, d) {
 
 async function executeMove(m) {
     if(!m) return;
-    // 履歴の保存 (深いコピー)
     history.push(JSON.stringify({ board, hands, turn, isDead }));
     isPausedByUndo = false;
     
@@ -532,18 +267,68 @@ async function executeMove(m) {
             }) : true;
             if (res) { p.type = PROMOTE_MAP[p.type]; p.promoted = true; }
         }
-        const res = simMoveFast(board, m, turn, hands, isDead);
-        board = res.b; hands = res.h; isDead = res.d;
-    } else if (m.type === 'drop') {
-        const res = simMoveFast(board, m, turn, hands, isDead);
-        board = res.b; hands = res.h; isDead = res.d;
+    }
+
+    const res = simMoveFast(board, m, turn, hands, isDead);
+    board = res.b; hands = res.h; 
+    
+    res.d.forEach((dead, idx) => {
+        if (dead && !isDead[idx]) {
+            showBigMsg(`${PLAYERS[idx].name} 陥落！`, "out");
+        }
+    });
+    isDead = res.d;
+
+    const survivors = isDead.map((dead, idx) => dead ? null : idx).filter(v => v !== null);
+
+    // --- 終局・順位判定の関数 ---
+    const finalizeGame = () => {
+        const rankings = PLAYERS.map((p, i) => ({
+            name: p.name,
+            kings: hands[i].filter(h => h === "玉").length,
+            alive: !isDead[i],
+            id: i
+        }));
+
+        // 順位付けルール修正: 1.生存優先(alive) > 2.王の数(kings) > 3.インデックス順
+        rankings.sort((a, b) => {
+            if (a.alive !== b.alive) return b.alive ? 1 : -1; // 生存者が上
+            return b.kings - a.kings; // 同じ生存/脱落状態なら王の数が多い方が上
+        });
+
+        let resultText = "【最終順位】\n";
+        rankings.forEach((r, idx) => {
+            resultText += `${idx + 1}位: ${r.name} (${r.alive ? "生存" : "陥落"} / 王:${r.kings}枚)\n`;
+        });
+
+        render();
+        // 第3引数にresultTextを渡す形式を維持
+        showBigMsg(`${rankings[0].name} 勝利！`, "win", resultText);
+    };
+
+    // 2人脱落時点での判定
+    if (survivors.length === 2) {
+        const pA = survivors[0], pB = survivors[1];
+        const countA = hands[pA].filter(p => p === "玉").length;
+        const countB = hands[pB].filter(p => p === "玉").length;
+        if (countA !== countB) {
+            finalizeGame();
+            return; 
+        } else {
+            showBigMsg("サドンデス突入！", "out");
+        }
+    }
+
+    if (survivors.length === 1) {
+        finalizeGame();
+        return;
     }
 
     turn = (turn + 1) % 4;
-    while (isDead[turn] && isDead.filter(x => !x).length > 1) turn = (turn + 1) % 4;
+    while (isDead[turn] && survivors.length > 1) turn = (turn + 1) % 4;
     
     selected = null; selectedHand = null; render();
-    if (isDead.filter(x => !x).length > 1 && playerTypes[turn] === "cpu") startCpuThink();
+    if (survivors.length > 1 && playerTypes[turn] === "cpu") startCpuThink();
 }
 
 function undo() {
@@ -638,8 +423,16 @@ function render() {
         const hEl = document.getElementById(`hand-${i}`); hEl.innerHTML = '';
         hands[i].forEach((type, idx) => {
             const d = document.createElement('div'); d.className = 'hand-piece ' + PLAYERS[i].class; d.textContent = type;
-            if (turn === i && selectedHand === idx) d.classList.add('hand-selected');
-            d.onclick = (e) => { e.stopPropagation(); if(turn===i && playerTypes[i]==="human") { selected=null; selectedHand=(selectedHand===idx)?null:idx; render(); }};
+            
+            if (type === "玉") {
+                // 王はグレーアウトし、クリック不可にする
+                d.style.opacity = "0.4";
+                d.style.background = "#aaa";
+                d.style.cursor = "default";
+            } else {
+                if (turn === i && selectedHand === idx) d.classList.add('hand-selected');
+                d.onclick = (e) => { e.stopPropagation(); if(turn===i && playerTypes[i]==="human") { selected=null; selectedHand=(selectedHand===idx)?null:idx; render(); }};
+            }
             hEl.appendChild(d);
         });
     }
@@ -648,8 +441,13 @@ function render() {
 
 function updateStatus() {
     const s = document.getElementById('status');
-    if (isDead.filter(x => !x).length === 1) { s.textContent = `終局：${PLAYERS[isDead.findIndex(x => !x)].name}勝利！`; return; }
-    s.textContent = `${PLAYERS[turn].name}の番 ${isPausedByUndo ? "(停止中)" : ""}`;
+    const survivors = isDead.filter(x => !x);
+    if (survivors.length === 1) {
+        s.textContent = `終局：${PLAYERS[isDead.findIndex(x => !x)].name}勝利！`;
+        return;
+    }
+    const kingInfo = PLAYERS.map((p, i) => `${p.name}:${hands[i].filter(h=>h==="玉").length}`).join(" ");
+    s.textContent = `${PLAYERS[turn].name}の番 (王:${kingInfo}) ${isPausedByUndo ? "(停止)" : ""}`;
 }
 
 function canMove(p, fr, fc, tr, tc, b) {
@@ -765,10 +563,7 @@ function isNifu(r, c, o, type, b) {
     return false;
 }
 
-
-
 function simMoveFast(b, m, t, h, d) {
-    // 盤面の高速コピー（1次元的なsliceを利用）
     const nb = new Array(SIZE);
     for (let i = 0; i < SIZE; i++) nb[i] = b[i].slice();
 
@@ -776,13 +571,14 @@ function simMoveFast(b, m, t, h, d) {
     const nd = [...d];
 
     if (m.type === 'move') {
-        // 移動元の駒をコピーして新しいオブジェクトを作る（元の盤面を汚さない）
         const p = { ...nb[m.fr][m.fc] };
         const target = nb[m.tr][m.tc];
         
         if (target) {
-            if (target.type === "玉") nd[target.owner] = true;
-            else {
+            if (target.type === "玉") {
+                nd[target.owner] = true;
+                nh[t].push("玉"); // 王を獲得した証として持ち駒に入れる
+            } else {
                 let typeToAdd = target.type;
                 if (target.promoted) {
                     const reverseMap = { "と": "歩", "全": "銀", "龍": "飛", "馬": "角" };
@@ -833,6 +629,36 @@ function isCheck(b, owner, d) {
 function findKing(b, t) {
     for (let r=0; r<SIZE; r++) for (let c=0; c<SIZE; c++) if (b[r][c] && b[r][c].type === "玉" && b[r][c].owner === t) return {r,c};
     return null;
+}
+// 中央に大きなメッセージを表示する関数
+function showBigMsg(text, type = "out", subText = "") {
+    const overlay = document.getElementById('msg-overlay');
+    overlay.innerHTML = '';
+    const div = document.createElement('div');
+    div.className = type === "win" ? "win-msg" : "out-msg";
+    
+    // メインの「～勝利！」
+    const mainText = document.createElement('div');
+    mainText.textContent = text;
+    div.appendChild(mainText);
+
+    // 順位リストがある場合（勝利時のみ）
+    if (subText) {
+        const subDiv = document.createElement('div');
+        subDiv.style.fontSize = "18px";
+        subDiv.style.marginTop = "15px";
+        subDiv.style.color = "#333";
+        subDiv.style.textAlign = "left";
+        subDiv.style.fontWeight = "normal";
+        subDiv.style.lineHeight = "1.4";
+        subDiv.innerText = subText;
+        div.appendChild(subDiv);
+    }
+
+    overlay.appendChild(div);
+    if (type !== "win") { 
+        setTimeout(() => div.remove(), 2000); 
+    }
 }
 
 initMenu();
