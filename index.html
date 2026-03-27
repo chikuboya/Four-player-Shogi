@@ -21,20 +21,44 @@
         .promote-btn { margin: 10px; font-size: 18px; padding: 10px 20px; }
         .btn-yes { background: #d00; } .btn-no { background: #666; }
         
-        #msg-overlay { pointer-events: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; text-align: center; width: 100%; }
+        #msg-overlay { 
+            pointer-events: none; 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            z-index: 100; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 242px; /* 盤面の幅に合わせる */
+            height: 242px; /* 盤面の高さに合わせる */
+        }
         
         .out-msg { 
             color: #ffff00; font-size: 48px; font-weight: bold; 
             text-shadow: 3px 3px 0 #000, -2px -2px 0 #000; 
             animation: fadeOut 2s forwards; white-space: nowrap; 
         }
-        
         .win-msg { 
-            color: #ff0000; font-size: 60px; font-weight: bold; 
-            background: rgba(255,255,255,0.9); padding: 20px 40px; 
-            border: 6px double #ff0000; border-radius: 15px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            color: #ff0000; 
+            font-size: 28px; 
+            font-weight: bold; 
+            background: rgba(255,255,255,0.98); 
+            padding: 15px; 
+            border: 4px double #ff0000; 
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
             animation: bounce 0.5s infinite alternate;
+            
+            width: 210px; 
+            box-sizing: border-box;
+            text-align: center;
+
+            /* 【修正】ドラッグ開始位置を中央にするための初期値 */
+            position: relative; 
+            user-select: none; /* テキスト選択を防ぐ */
+            touch-action: none; /* スマホのスクロール干渉防止 */
         }
         
         @keyframes fadeOut { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.5); } }
@@ -102,6 +126,9 @@ let board = Array(SIZE).fill(null).map(() => Array(SIZE).fill(null));
 let hands = [[], [], [], []];
 let turn = 0, isDead = [false, false, false, false], playerTypes = [], cpuPersonalities = [], initialMainPieces = [];
 let history = [], selected = null, selectedHand = null, cpuTimer = null, isPausedByUndo = false;
+let positionHistory = new Map();
+let moveCount = 0; // 手数をカウントする変数
+let isSuddenDeathTriggered = false; // サドンデス表示済みフラグ
 let memo = new Map();
 
 // --- 初期化 ---
@@ -144,7 +171,26 @@ function startCpuThink() {
     clearTimeout(cpuTimer);
     cpuTimer = setTimeout(() => {
         memo.clear();
-        const best = getBestMove(board, turn, hands, isDead);
+        let best = getBestMove(board, turn, hands, isDead);
+
+        // 千日手判定用の簡易関数
+        const checkSennichi = (move) => {
+            const next = simMoveFast(board, move, turn, hands, isDead);
+            const hash = JSON.stringify(next.b) + JSON.stringify(next.h) + ((turn + 1) % 4);
+            return (positionHistory.get(hash) || 0) >= 2;
+        };
+
+        // AIが千日手を選んだら、他の手を探す
+        if (best && checkSennichi(best)) {
+            const allMoves = getAllMoves(board, turn, hands[turn]).filter(m => !checkSennichi(m));
+            if (allMoves.length > 0) {
+                best = allMoves[0];
+            } else {
+                // 指す手がない場合はパス（または適当な手）
+                best = {type: 'pass'};
+            }
+        }
+        
         executeMove(best || {type: 'pass'});
     }, 600);
 }
@@ -250,12 +296,52 @@ function minimax(b, t, depth, alpha, beta, me, h, d) {
 }
 
 // --- 操作・戻る機能 ---
-
 async function executeMove(m) {
     if(!m) return;
-    history.push(JSON.stringify({ board, hands, turn, isDead }));
+
+    // --- 【修正ポイント】王を取る手かどうかを事前に判定 ---
+    const targetPiece = (m.type === 'move') ? board[m.tr][m.tc] : null;
+    const isCapturingKing = (targetPiece && targetPiece.type === "玉");
+
+    // 10手ごとに履歴をリセット
+    moveCount++;
+    if (moveCount % 10 === 0) {
+        positionHistory.clear();
+    }
+
+    // --- 【修正ポイント】千日手判定を「王取り以外」に限定 ---
+    const isSennichite = (move) => {
+        // 王を取る手は絶対に千日手にならない（局面が劇的に変わる）のでチェック不要
+        if (isCapturingKing) return false; 
+        
+        const next = simMoveFast(board, move, turn, hands, isDead);
+        const hash = JSON.stringify(next.b) + JSON.stringify(next.h) + ((turn + 1) % 4);
+        return (positionHistory.get(hash) || 0) >= 2;
+    };
+
+    if (m.type !== 'pass' && isSennichite(m)) {
+        if (playerTypes[turn] === "human") {
+            alert("千日手（同一局面3回）になるため打てません");
+            moveCount--;
+            // 選択状態をリセットして操作を戻す
+            selected = null; selectedHand = null; render();
+            return;
+        }
+    }
+
+    // 現局面の記録
+    const currentHash = JSON.stringify(board) + JSON.stringify(hands) + turn;
+    positionHistory.set(currentHash, (positionHistory.get(currentHash) || 0) + 1);
+
+    // 履歴保存 (Undo用) - posHistも保存
+    history.push(JSON.stringify({ 
+        board, hands, turn, isDead, moveCount,
+        posHist: Array.from(positionHistory.entries()) 
+    }));
+
     isPausedByUndo = false;
     
+    // 成り判定
     if (m.type === 'move') {
         const p = board[m.fr][m.fc];
         const isZone = (r, c, o) => (o===0?r<=2 : o===1?c>=6 : o===2?r>=6 : c<=2);
@@ -269,8 +355,10 @@ async function executeMove(m) {
         }
     }
 
+    // 盤面反映
     const res = simMoveFast(board, m, turn, hands, isDead);
-    board = res.b; hands = res.h; 
+    board = res.b; 
+    hands = res.h; 
     
     res.d.forEach((dead, idx) => {
         if (dead && !isDead[idx]) {
@@ -281,7 +369,7 @@ async function executeMove(m) {
 
     const survivors = isDead.map((dead, idx) => dead ? null : idx).filter(v => v !== null);
 
-    // --- 終局・順位判定の関数 ---
+    // --- 終局・サドンデス判定 ---
     const finalizeGame = () => {
         const rankings = PLAYERS.map((p, i) => ({
             name: p.name,
@@ -289,41 +377,38 @@ async function executeMove(m) {
             alive: !isDead[i],
             id: i
         }));
-
-        // 順位付けルール修正: 1.生存優先(alive) > 2.王の数(kings) > 3.インデックス順
         rankings.sort((a, b) => {
-            if (a.alive !== b.alive) return b.alive ? 1 : -1; // 生存者が上
-            return b.kings - a.kings; // 同じ生存/脱落状態なら王の数が多い方が上
+            if (a.alive !== b.alive) return b.alive ? 1 : -1;
+            return b.kings - a.kings;
         });
-
         let resultText = "【最終順位】\n";
         rankings.forEach((r, idx) => {
             resultText += `${idx + 1}位: ${r.name} (${r.alive ? "生存" : "陥落"} / 王:${r.kings}枚)\n`;
         });
-
         render();
-        // 第3引数にresultTextを渡す形式を維持
         showBigMsg(`${rankings[0].name} 勝利！`, "win", resultText);
     };
 
-    // 2人脱落時点での判定
-    if (survivors.length === 2) {
+    if (survivors.length === 1) {
+        finalizeGame(); return;
+    } else if (survivors.length === 2) {
         const pA = survivors[0], pB = survivors[1];
         const countA = hands[pA].filter(p => p === "玉").length;
         const countB = hands[pB].filter(p => p === "玉").length;
+
         if (countA !== countB) {
-            finalizeGame();
-            return; 
-        } else {
+            finalizeGame(); return;
+        } else if (!isSuddenDeathTriggered) {
+            // 【修正】まだ表示していない場合のみメッセージを出し、フラグを立てる
             showBigMsg("サドンデス突入！", "out");
+            isSuddenDeathTriggered = true;
         }
+    } else {
+        // 3人以上生存している間はフラグを寝かせておく（念のため）
+        isSuddenDeathTriggered = false;
     }
 
-    if (survivors.length === 1) {
-        finalizeGame();
-        return;
-    }
-
+    // 手番移動
     turn = (turn + 1) % 4;
     while (isDead[turn] && survivors.length > 1) turn = (turn + 1) % 4;
     
@@ -333,13 +418,21 @@ async function executeMove(m) {
 
 function undo() {
     if (history.length === 0) return;
-    clearTimeout(cpuTimer); // AIの思考を中断
+    clearTimeout(cpuTimer);
+    
+    // --- 【追加】メッセージ表示を消去 ---
+    document.getElementById('msg-overlay').innerHTML = '';
+    
     const last = JSON.parse(history.pop());
     board = last.board;
     hands = last.hands;
     turn = last.turn;
     isDead = last.isDead;
-    isPausedByUndo = true; // 戻った後に勝手に動き出さないようにする
+    moveCount = last.moveCount;
+    positionHistory = new Map(last.posHist);
+    
+    isSuddenDeathTriggered = false; // サドンデスフラグも戻しておく
+    isPausedByUndo = true;
     selected = null; 
     selectedHand = null;
     render();
@@ -637,27 +730,69 @@ function showBigMsg(text, type = "out", subText = "") {
     const div = document.createElement('div');
     div.className = type === "win" ? "win-msg" : "out-msg";
     
-    // メインの「～勝利！」
+    // 【追加】ドラッグ移動のための設定（勝利時のみ）
+    if (type === "win") {
+        div.style.position = "absolute";
+        div.style.cursor = "move";
+        div.style.pointerEvents = "auto"; // クリックやドラッグを有効化
+        
+        let isDragging = false;
+        let offset = { x: 0, y: 0 };
+
+        const startDrag = (e) => {
+            isDragging = true;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            offset.x = div.offsetLeft - clientX;
+            offset.y = div.offsetTop - clientY;
+            div.style.animation = "none"; // ドラッグ中はバウンスを止める
+        };
+
+        const doDrag = (e) => {
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            div.style.left = (clientX + offset.x) + "px";
+            div.style.top = (clientY + offset.y) + "px";
+            div.style.transform = "none"; // 中央固定解除
+        };
+
+        const stopDrag = () => { isDragging = false; };
+
+        div.onmousedown = startDrag;
+        window.onmousemove = doDrag;
+        window.onmouseup = stopDrag;
+
+        div.ontouchstart = startDrag;
+        window.ontouchmove = doDrag;
+        window.ontouchend = stopDrag;
+    }
+
+    // メインテキスト
     const mainText = document.createElement('div');
     mainText.textContent = text;
+    if (type === "win") {
+        mainText.style.fontSize = "26px";
+        mainText.style.lineHeight = "1.2";
+    }
     div.appendChild(mainText);
 
-    // 順位リストがある場合（勝利時のみ）
+    // 順位リスト
     if (subText) {
         const subDiv = document.createElement('div');
-        subDiv.style.fontSize = "18px";
-        subDiv.style.marginTop = "15px";
+        subDiv.style.fontSize = "16px";
+        subDiv.style.marginTop = "12px";
         subDiv.style.color = "#333";
         subDiv.style.textAlign = "left";
-        subDiv.style.fontWeight = "normal";
-        subDiv.style.lineHeight = "1.4";
+        subDiv.style.fontWeight = "bold";
+        subDiv.style.lineHeight = "1.5";
         subDiv.innerText = subText;
         div.appendChild(subDiv);
     }
 
     overlay.appendChild(div);
     if (type !== "win") { 
-        setTimeout(() => div.remove(), 2000); 
+        setTimeout(() => { if(div.parentNode) div.remove(); }, 2000); 
     }
 }
 
