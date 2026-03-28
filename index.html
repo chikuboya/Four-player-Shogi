@@ -225,14 +225,22 @@ function getBestMove(b, me, h, d) {
                     score += 500;
                 }
 
-                // 4. もとの自分の陣地から離れる手 (初期位置からの距離)
-                // 南(0)なら行8, 西(1)なら列0, 北(2)なら行0, 東(3)なら列8 が初期陣地
-                let distFromHome = 0;
-                if (me === 0) distFromHome = 8 - m.tr;
-                else if (me === 1) distFromHome = m.tc;
-                else if (me === 2) distFromHome = m.tr;
-                else if (me === 3) distFromHome = 8 - m.tc;
-                score += distFromHome * 10;
+                // 4. 生存している敵の王に近づく手 (ターゲット追撃)
+                let minTargetDist = 100; // 初期値（十分大きい数字）
+                for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
+                    // 自分以外 かつ 生存しているプレイヤーの王を探す
+                    if (targetIdx !== me && !isDead[targetIdx]) {
+                        const enemyKing = findKing(board, targetIdx);
+                        if (enemyKing) {
+                            // 移動後の地点からその敵王までの距離（マンハッタン距離）
+                            const dist = Math.abs(m.tr - enemyKing.r) + Math.abs(m.tc - enemyKing.c);
+                            if (dist < minTargetDist) minTargetDist = dist;
+                        }
+                    }
+                }
+                // 距離が近い（minTargetDistが小さい）ほどスコアを高くする
+                // 最大距離は16(8+8)なので、(16 - 距離) * 10 で加点
+                score += (16 - minTargetDist) * 10;
 
             } else if (m.type === 'drop') {
                 // 持ち駒を打つ手も玉の近くだけ少し評価
