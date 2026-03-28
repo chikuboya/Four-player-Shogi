@@ -579,7 +579,7 @@ function canMove(p, fr, fc, tr, tc, b) {
 
 function getAllMoves(b, t, h) {
     let m = [];
-    // 1. 盤上の駒の移動
+    // 1. 盤上の駒の移動（変更なし）
     for (let r = 0; r < SIZE; r++) {
         for (let c = 0; c < SIZE; c++) {
             const p = b[r][c];
@@ -593,9 +593,8 @@ function getAllMoves(b, t, h) {
         }
     }
     
-    // 2. 持ち駒を打つ（超最適化版）
+    // 2. 持ち駒を打つ
     if(h && h.length > 0) {
-        // 種類ごとに整理 { "歩": [index], "金": [index] }
         const typeGroups = {};
         h.forEach((type, idx) => {
             if (!typeGroups[type]) typeGroups[type] = [];
@@ -603,42 +602,35 @@ function getAllMoves(b, t, h) {
         });
 
         let types = Object.keys(typeGroups);
-        // ランダムに2種類だけ選ぶ（種類が2個以上ある場合）
+        
+        // --- 【修正】玉は打てないように除外 ---
+        types = types.filter(type => type !== "玉");
+        // ------------------------------------
+
         if (types.length > 2) {
             types = types.sort(() => 0.5 - Math.random()).slice(0, 2);
         }
 
         types.forEach(type => {
-            const idx = typeGroups[type][0]; // その種類の最初の1個を使用
-
+            const idx = typeGroups[type][0];
             for (let r = 0; r < SIZE; r++) {
-                if (type === "歩") {
-                    if ((t === 0 && r === 0) || (t === 2 && r === 8)) continue;
-                }
-                
+                if (type === "歩") { if ((t === 0 && r === 0) || (t === 2 && r === 8)) continue; }
                 for (let c = 0; c < SIZE; c++) {
-                    if (type === "歩") {
-                        if ((t === 1 && c === 8) || (t === 3 && c === 0)) continue;
-                    }
-
+                    if (type === "歩") { if ((t === 1 && c === 8) || (t === 3 && c === 0)) continue; }
                     if (!b[r][c]) {
-                        // 【配置制限】飛車・角以外は、自分の駒の周囲1マス以内のみ
                         if (type !== "飛" && type !== "角") {
                             let hasNeighbor = false;
                             for (let dr = -1; dr <= 1; dr++) {
                                 for (let dc = -1; dc <= 1; dc++) {
                                     const nr = r + dr, nc = c + dc;
                                     if (nr >= 0 && nr < SIZE && nc >= 0 && nc < SIZE) {
-                                        if (b[nr][nc] && b[nr][nc].owner === t) {
-                                            hasNeighbor = true; break;
-                                        }
+                                        if (b[nr][nc] && b[nr][nc].owner === t) { hasNeighbor = true; break; }
                                     }
                                 }
                                 if (hasNeighbor) break;
                             }
-                            if (!hasNeighbor) continue; // 周囲に自分がいなければスキップ
+                            if (!hasNeighbor) continue;
                         }
-
                         if (type === "歩" && isNifu(r, c, t, type, b)) continue;
                         m.push({type: 'drop', handIdx: idx, tr: r, tc: c});
                     }
