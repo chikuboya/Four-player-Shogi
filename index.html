@@ -70,12 +70,12 @@
         font-size: 12px;
         cursor: pointer;
     }
-    /* レイアウト：中央に寄せて密着させる */
     .main-game-layout { 
         display: flex; 
         align-items: center; 
-        justify-content: flex-start; 
-        gap: 2px; /* 盤面と駒台の隙間を最小限に */
+        justify-content: center; /* ★左詰め(flex-start)から中央(center)に変更 */
+        gap: 2px; 
+        width: 100%;             /* 全体の幅を確保 */
     }
     .center-column { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 
@@ -156,8 +156,17 @@
         box-sizing: border-box;
     }
     .hand-h { width: 242px; min-height: 35px; flex-wrap: wrap; justify-content: center; margin: 2px 0; }
-    .hand-v { width: 35px; height: 242px; flex-direction: column; align-items: center; justify-content: flex-start; padding: 2px 0; }
-
+    /* 西・東の持ち駒台：高さが足りなくなったら横に列を増やす */
+    .hand-v { 
+        width: auto;             /* 幅を固定(35px)から自動に変更 */
+        min-width: 35px;         /* 最低限の幅は維持 */
+        height: 242px;           /* 盤面の高さで止める（これを超えると折り返す） */
+        flex-direction: column;  /* 縦に並べる */
+        flex-wrap: wrap;         /* ★入り切らない分を次の列へ */
+        align-content: flex-start; /* ★新しい列を左詰めで作る */
+        justify-content: flex-start; 
+        padding: 2px 0; 
+    }
     .label { font-size: 10px; font-weight: bold; color: #5d3a1a; margin: 0; }
     /* --- 成り選択モーダルの新設計 --- */
     #promote-modal {
@@ -300,7 +309,26 @@
         width: 100px; /* 少し広げました */
                 box-shadow: 0 4px 8px rgba(0,0,0,0.15);
     }
-    
+    /* サドンデス突入の演出スタイル */
+    .sudden-death-msg {
+        color: #fff;
+        font-size: 24px;
+        font-weight: bold;
+        background: linear-gradient(45deg, #000, #444); /* 黒からグレーのグラデ */
+        padding: 15px 25px;
+        border: 4px solid #ff0000; /* 赤い縁取り */
+        border-radius: 8px;
+        box-shadow: 0 0 30px rgba(255, 0, 0, 0.8), inset 0 0 15px rgba(255, 255, 255, 0.3);
+        text-shadow: 2px 2px 4px #000;
+        text-align: center;
+        white-space: nowrap;
+        animation: flash-shake 0.4s infinite alternate; /* 激しく震えるアニメ */
+    }
+
+    @keyframes flash-shake {
+        from { transform: scale(1) rotate(-1deg); filter: brightness(1); }
+        to { transform: scale(1.05) rotate(1deg); filter: brightness(1.3); }
+    }
     </style>
 </head>
 <body>
@@ -337,7 +365,7 @@
 <script>
 // --- 基本定数 ---
 const SIZE = 9;
-const PIECE_VAL = { "玉": 1000000, "飛": 1500, "角": 1400, "龍": 2000, "馬": 1900, "金": 800, "銀": 700, "全": 800, "歩": 100, "と": 900, "香": 400, "杏": 800, "桂": 500, "圭": 800 };
+const PIECE_VAL = { "歩": 100, "と": 400, "香": 300, "杏": 600, "桂": 400, "圭": 600, "銀": 500, "全": 600, "金": 600, "角": 800, "馬": 1200, "飛": 1000, "龍": 1500, "玉": 15000 };
 const PROMOTE_MAP = { "歩": "と", "銀": "全", "飛": "龍", "角": "馬", "香": "杏", "桂": "圭" };
 const PLAYERS = [{ name: "南", class: "p0" }, { name: "西", class: "p1" }, { name: "北", class: "p2" }, { name: "東", class: "p3" }];
 
@@ -357,13 +385,15 @@ function initMenu() {
     container.innerHTML = "";
 
     // 1. モード選択（中央揃えを適用）
+    // initMenu関数内の該当箇所を以下に差し替え
     const modeDiv = document.createElement('div');
     modeDiv.style.marginBottom = "25px";
-    modeDiv.style.textAlign = "center"; // 文字とボタンを中央に
+    modeDiv.style.textAlign = "center";
     modeDiv.innerHTML = `
-        <div class="mode-selector" style="display: flex; justify-content: center; gap: 10px;">
-            <button class="opt-btn mode-btn active" id="btn-mode-A" onclick="setMode('patternA')">四國将棋<br><small>(桂香あり)</small></button>
-            <button class="opt-btn mode-btn" id="btn-mode-B" onclick="setMode('patternB')">四人将棋<br><small>(桂香なし)</small></button>
+        <div class="mode-selector" style="display: flex; justify-content: center; gap: 5px;">
+            <button class="opt-btn mode-btn active" id="btn-mode-A" onclick="setMode('patternA')">四國将棋<br><small>(金銀桂香)</small></button>
+            <button class="opt-btn mode-btn" id="btn-mode-B" onclick="setMode('patternB')">四人将棋<br><small>(金銀)</small></button>
+            <button class="opt-btn mode-btn" id="btn-mode-C" onclick="setMode('patternC')">四人将棋<br><small>(こち亀版)</small></button>
         </div>
         <input type="hidden" id="board-layout-select" value="patternA">
     `;
@@ -408,13 +438,31 @@ function initMenu() {
         compassGrid.appendChild(node);
     });
     container.appendChild(compassGrid);
+    setMode(document.getElementById('board-layout-select').value);
 }
 
-// ボタン切り替え用の関数
 function setMode(val) {
     document.getElementById('board-layout-select').value = val;
     document.getElementById('btn-mode-A').classList.toggle('active', val === 'patternA');
     document.getElementById('btn-mode-B').classList.toggle('active', val === 'patternB');
+    document.getElementById('btn-mode-C').classList.toggle('active', val === 'patternC');
+
+    // --- ここから追加：飛車角ボタンの制御 ---
+    const isPatternC = (val === 'patternC');
+    for (let i = 0; i < 4; i++) {
+        const btnH = document.getElementById(`p-piece-h-${i}`);
+        const btnK = document.getElementById(`p-piece-k-${i}`);
+        
+        if (btnH && btnK) {
+            // こち亀版なら無効化(true)、それ以外なら有効化(false)
+            btnH.disabled = isPatternC;
+            btnK.disabled = isPatternC;
+
+            // 見た目のフィードバック（半透明化）
+            btnH.style.opacity = isPatternC ? "0.4" : "1";
+            btnK.style.opacity = isPatternC ? "0.4" : "1";
+        }
+    }
 }
 
 function setType(idx, val) {
@@ -443,35 +491,61 @@ function startGame() {
 }
 
 function initBoard() {
-    // 盤面をクリア
     const layout = document.getElementById('board-layout-select').value;
     const s = (r, c, t, o) => { board[r][c] = { type: t, owner: o, promoted: false }; };
+
     if (layout === "patternA") {
-    // 各プレイヤーの配置（画像のレイアウトを各視点に合わせて回転）
- // owner 0: 南 (右へ1つ → colを+1)
-s(8, 1, "香", 0); s(8, 2, "玉", 0); s(8, 3, "桂", 0); s(8, 4, "金", 0); s(8, 5, "銀", 0);
-s(7, 1, "歩", 0); s(7, 3, initialMainPieces[0], 0); s(7, 5, "歩", 0);
-s(6, 2, "歩", 0); s(6, 3, "歩", 0); s(6, 4, "歩", 0); s(8, 0, "歩", 0);
+        // --- 既存の四國将棋 (Pattern A) ---
+        // owner 0: 南 (全体的に左[col-]へ1つシフト)
+        s(8, 1, "歩", 0); s(8, 2, "金", 0); s(8, 3, "玉", 0); s(8, 4, "桂", 0); s(8, 5, "香", 0); s(8, 6, "金", 0); s(8, 7, "歩", 0);
+        s(7, 2, "歩", 0); s(7, 3, "銀", 0); s(7, 4, initialMainPieces[0], 0); s(7, 5, "銀", 0); s(7, 6, "歩", 0);
+        s(6, 3, "歩", 0); s(6, 4, "歩", 0); s(6, 5, "歩", 0);
 
-// owner 1: 西 (下へ1つ → rowを+1)
-s(1, 0, "香", 1); s(2, 0, "玉", 1); s(3, 0, "桂", 1); s(4, 0, "金", 1); s(5, 0, "銀", 1);
-s(1, 1, "歩", 1); s(3, 1, initialMainPieces[1], 1); s(5, 1, "歩", 1);
-s(2, 2, "歩", 1); s(3, 2, "歩", 1); s(4, 2, "歩", 1); s(0, 0, "歩", 1);
+        // owner 1: 西 (全体的に上[row-]へ1つシフト)
+        s(1, 0, "歩", 1); s(2, 0, "金", 1); s(3, 0, "玉", 1); s(4, 0, "桂", 1); s(5, 0, "香", 1); s(6, 0, "銀", 1); s(7, 0, "歩", 1);
+        s(2, 1, "歩", 1); s(4, 1, initialMainPieces[1], 1); s(6, 1, "歩", 1);
+        s(3, 2, "歩", 1); s(4, 2, "歩", 1); s(5, 2, "歩", 1);
 
-// owner 2: 北 (左へ1つ → colを-1)
-s(0, 7, "香", 2); s(0, 6, "玉", 2); s(0, 5, "桂", 2); s(0, 4, "金", 2); s(0, 3, "銀", 2);
-s(1, 7, "歩", 2); s(1, 5, initialMainPieces[2], 2); s(1, 3, "歩", 2);
-s(2, 6, "歩", 2); s(2, 5, "歩", 2); s(2, 4, "歩", 2);  s(0, 8, "歩", 2);
+        // owner 2: 北 (全体的に右[col+]へ1つシフト)
+        s(0, 7, "歩", 2); s(0, 6, "金", 2); s(0, 5, "玉", 2); s(0, 4, "桂", 2); s(0, 3, "香", 2); s(0, 2, "銀", 2); s(0, 1, "歩", 2);
+        s(1, 6, "歩", 2); s(1, 4, initialMainPieces[2], 2); s(1, 2, "歩", 2);
+        s(2, 5, "歩", 2); s(2, 4, "歩", 2); s(2, 3, "歩", 2);
 
-// owner 3: 東 (上へ1つ → rowを-1)
-s(7, 8, "香", 3); s(6, 8, "玉", 3); s(5, 8, "桂", 3); s(4, 8, "金", 3); s(3, 8, "銀", 3);
-s(7, 7, "歩", 3); s(5, 7, initialMainPieces[3], 3); s(3, 7, "歩", 3);
-s(6, 6, "歩", 3); s(5, 6, "歩", 3); s(4, 6, "歩", 3); s(8, 8, "歩", 3);
-    } else {
-    s(8,4,"玉",0); s(8,3,"金",0); s(8,5,"金",0); s(8,2,"銀",0); s(8,6,"銀",0); s(7,4,initialMainPieces[0],0); s(7,3,"歩",0); s(7,5,"歩",0); s(6,4,"歩",0);
-    s(4,0,"玉",1); s(3,0,"金",1); s(5,0,"金",1); s(2,0,"銀",1); s(6,0,"銀",1); s(4,1,initialMainPieces[1],1); s(3,1,"歩",1); s(5,1,"歩",1); s(4,2,"歩",1);
-    s(0,4,"玉",2); s(0,5,"金",2); s(0,3,"金",2); s(0,6,"銀",2); s(0,2,"銀",2); s(1,4,initialMainPieces[2],2); s(1,3,"歩",2); s(1,5,"歩",2); s(2,4,"歩",2);
-    s(4,8,"玉",3); s(5,8,"金",3); s(3,8,"金",3); s(6,8,"銀",3); s(2,8,"銀",3); s(4,7,initialMainPieces[3],3); s(5,7,"歩",3); s(3,7,"歩",3); s(4,6,"歩",3);
+        // owner 3: 東 (全体的に下[row+]へ1つシフト)
+        s(7, 8, "歩", 3); s(6, 8, "金", 3); s(5, 8, "玉", 3); s(4, 8, "桂", 3); s(3, 8, "香", 3); s(2, 8, "銀", 3); s(1, 8, "歩", 3);
+        s(6, 7, "歩", 3); s(4, 7, initialMainPieces[3], 3); s(2, 7, "歩", 3);
+        s(5, 6, "歩", 3); s(4, 6, "歩", 3); s(3, 6, "歩", 3);
+
+    } else if (layout === "patternB") {
+        // --- 既存の四人将棋 (Pattern B) ---
+        s(8,4,"玉",0); s(8,3,"金",0); s(8,5,"金",0); s(8,2,"銀",0); s(8,6,"銀",0); s(7,4,initialMainPieces[0],0); s(7,3,"歩",0); s(7,5,"歩",0); s(6,4,"歩",0);
+        s(4,0,"玉",1); s(3,0,"金",1); s(5,0,"金",1); s(2,0,"銀",1); s(6,0,"銀",1); s(4,1,initialMainPieces[1],1); s(3,1,"歩",1); s(5,1,"歩",1); s(4,2,"歩",1);
+        s(0,4,"玉",2); s(0,5,"金",2); s(0,3,"金",2); s(0,6,"銀",2); s(0,2,"銀",2); s(1,4,initialMainPieces[2],2); s(1,3,"歩",2); s(1,5,"歩",2); s(2,4,"歩",2);
+        s(4,8,"玉",3); s(5,8,"金",3); s(3,8,"金",3); s(6,8,"銀",3); s(2,8,"銀",3); s(4,7,initialMainPieces[3],3); s(5,7,"歩",3); s(3,7,"歩",3); s(4,6,"歩",3);
+
+        // ... (西・北・東の配置もここに入れる) ...
+
+    } else if (layout === "patternC") {
+        // --- 追加：四人将棋（こち亀版） ---
+        // owner 0: 南
+        s(8, 0, "香", 0); s(8, 1, "桂", 0); s(8, 2, "銀", 0); s(8, 3, "金", 0); s(8, 4, "玉", 0); s(8, 5, "金", 0); s(8, 6, "銀", 0); s(8, 7, "桂", 0);
+        s(7, 1, "角", 0); s(7, 6, "飛", 0); 
+        s(6, 3, "歩", 0); s(6, 4, "歩", 0); s(6, 5, "歩", 0); s(6, 6, "歩", 0); s(6, 7, "歩", 0);
+
+        // owner 1: 西
+        s(0, 0, "香", 1); s(1, 0, "桂", 1); s(2, 0, "銀", 1); s(3, 0, "金", 1); s(4, 0, "玉", 1); s(5, 0, "金", 1); s(6, 0, "銀", 1); s(7, 0, "桂", 1);
+        s(1, 1, "角", 1); s(6, 1, "飛", 1);
+        s(3, 2, "歩", 1); s(4, 2, "歩", 1); s(5, 2, "歩", 1); s(6, 2, "歩", 1); s(7, 2, "歩", 1);
+
+        // owner 2: 北
+        s(0, 8, "香", 2); s(0, 7, "桂", 2); s(0, 6, "銀", 2); s(0, 5, "金", 2); s(0, 4, "玉", 2); s(0, 3, "金", 2); s(0, 2, "銀", 2); s(0, 1, "桂", 2);
+        s(1, 7, "角", 2); s(1, 2, "飛", 2);
+        s(2, 5, "歩", 2); s(2, 4, "歩", 2); s(2, 3, "歩", 2); s(2, 2, "歩", 2); s(2, 1, "歩", 2);
+
+        // owner 3: 東
+        s(8, 8, "香", 3); s(7, 8, "桂", 3); s(6, 8, "銀", 3); s(5, 8, "金", 3); s(4, 8, "玉", 3); s(3, 8, "金", 3); s(2, 8, "銀", 3); s(1, 8, "桂", 3);
+        s(7, 7, "角", 3); s(2, 7, "飛", 3);
+        s(5, 6, "歩", 3); s(4, 6, "歩", 3); s(3, 6, "歩", 3); s(2, 6, "歩", 3); s(1, 6, "歩", 3);
     }
     render();
 }
@@ -510,90 +584,54 @@ function getBestMove(b, me, h, d) {
     let allMoves = getAllMoves(b, me, h[me]);
     if (allMoves.length === 0) return null;
 
-    // --- 指し手のオーダリング（並び替え） ---
-    allMoves.sort((a, b) => {
-        const getMoveScore = (m) => {
-            let score = 0;
-            if (m.type === 'move') {
-                const p = board[m.fr][m.fc];
-                const target = board[m.tr][m.tc];
-                
-                // 1. 自分の王を守る手 (移動先が自玉の周囲8マスなら加点)
-                const myKing = findKing(board, me);
-                if (myKing) {
-                    const distToKing = Math.max(Math.abs(m.tr - myKing.r), Math.abs(m.tc - myKing.c));
-                    if (distToKing <= 1) score += 2000;
-                }
-
-                // 2. 相手の駒を取る手
-                if (target) {
-                    score += PIECE_VAL[target.type] + 1000;
-                }
-
-                // 3. 成る手
-                const isZone = (r, c, o) => (o === 0 ? r <= 2 : o === 1 ? c >= 6 : o === 2 ? r >= 6 : c <= 2);
-                if (!p.promoted && PROMOTE_MAP[p.type] && isZone(m.tr, m.tc, me)) {
-                    score += 500;
-                }
-
-                // 4. 生存している敵の王に近づく手 (ターゲット追撃)
-                let minTargetDist = 100; // 初期値（十分大きい数字）
-                for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
-                    // 自分以外 かつ 生存しているプレイヤーの王を探す
-                    if (targetIdx !== me && !isDead[targetIdx]) {
-                        const enemyKing = findKing(board, targetIdx);
-                        if (enemyKing) {
-                            // 移動後の地点からその敵王までの距離（マンハッタン距離）
-                            const dist = Math.abs(m.tr - enemyKing.r) + Math.abs(m.tc - enemyKing.c);
-                            if (dist < minTargetDist) minTargetDist = dist;
-                        }
-                    }
-                }
-                // 距離が近い（minTargetDistが小さい）ほどスコアを高くする
-                // 最大距離は16(8+8)なので、(16 - 距離) * 10 で加点
-                score += (16 - minTargetDist) * 10;
-
-            } else if (m.type === 'drop') {
-                // 持ち駒を打つ手も玉の近くだけ少し評価
-                const myKing = findKing(board, me);
-                if (myKing) {
-                    const distToKing = Math.max(Math.abs(m.tr - myKing.r), Math.abs(m.tc - myKing.c));
-                    if (distToKing <= 1) score += 1500;
-                }
-            }
-            return score;
-        };
-        return getMoveScore(b) - getMoveScore(a); // スコアの高い順
-    });
-
-    let targetDepth = 4; 
-    let bestScore = -Infinity, bestMove = allMoves[0];
+    let bestScore = -Infinity;
+    let bestMove = allMoves[0];
 
     for (let m of allMoves) {
         const next = simMoveFast(b, m, me, h, d);
-        if (isCheck(next.b, me, d)) continue; 
-        
-        let score = minimax(next.b, (me + 1) % 4, targetDepth - 1, -Infinity, Infinity, me, next.h, next.d);
-        if (score > bestScore) {
-            bestScore = score;
+        if (isCheck(next.b, me, d)) continue;
+
+        let totalScoreForMove = 0;
+        let activeTargets = 0;
+
+        // 自分以外の生存者全員に対して個別にシミュレーション
+        for (let targetIdx = 0; targetIdx < 4; targetIdx++) {
+            if (targetIdx === me || d[targetIdx]) continue;
+
+            // me(自分) -> targetIdx -> me -> targetIdx の4手読み
+            let score = minimaxTargeted(next.b, targetIdx, 3, -Infinity, Infinity, me, targetIdx, next.h, next.d);
+            
+            totalScoreForMove += score;
+            activeTargets++;
+        }
+
+        // 平均スコア（または合計スコア）で比較
+        if (totalScoreForMove > bestScore) {
+            bestScore = totalScoreForMove;
             bestMove = m;
         }
     }
     return bestMove;
 }
 
-function minimax(b, t, depth, alpha, beta, me, h, d) {
-    if (d[me]) return -10000000;
+function minimaxTargeted(b, t, depth, alpha, beta, me, targetIdx, h, d) {
+    if (d[me]) return -10000000; // 自分が陥落したら最低評価
     if (depth === 0) return evalBoard(b, me, d, h);
 
-    const moves = getAllMoves(b, t, h[t]); 
-    if (moves.length === 0) return minimax(b, (t + 1) % 4, depth - 1, alpha, beta, me, h, d);
+    // 次の手番を「自分」と「ターゲット」で交互に入れ替える
+    const nextTurn = (t === me) ? targetIdx : me;
+    const moves = getAllMoves(b, t, h[t]);
+
+    if (moves.length === 0) {
+        // 指し手がない場合はパスして交代
+        return minimaxTargeted(b, nextTurn, depth - 1, alpha, beta, me, targetIdx, h, d);
+    }
 
     if (t === me) {
         let maxEval = -Infinity;
-        for (let i = 0; i < moves.length; i++) {
-            const next = simMoveFast(b, moves[i], t, h, d);
-            const val = minimax(next.b, (t + 1) % 4, depth - 1, alpha, beta, me, next.h, next.d);
+        for (let m of moves) {
+            const next = simMoveFast(b, m, t, h, d);
+            const val = minimaxTargeted(next.b, nextTurn, depth - 1, alpha, beta, me, targetIdx, next.h, next.d);
             maxEval = Math.max(maxEval, val);
             alpha = Math.max(alpha, maxEval);
             if (beta <= alpha) break;
@@ -601,11 +639,11 @@ function minimax(b, t, depth, alpha, beta, me, h, d) {
         return maxEval;
     } else {
         let minEval = Infinity;
-        // 他人の手番では、上位15手程度に絞ると3手読みが爆速になります
-        const limit = moves.length > 15 ? 15 : moves.length;
+        // 相手番は計算節約のため上位20手に絞る
+        const limit = Math.min(moves.length, 20);
         for (let i = 0; i < limit; i++) {
             const next = simMoveFast(b, moves[i], t, h, d);
-            const val = minimax(next.b, (t + 1) % 4, depth - 1, alpha, beta, me, next.h, next.d);
+            const val = minimaxTargeted(next.b, nextTurn, depth - 1, alpha, beta, me, targetIdx, next.h, next.d);
             minEval = Math.min(minEval, val);
             beta = Math.min(beta, minEval);
             if (beta <= alpha) break;
@@ -726,6 +764,94 @@ async function executeMove(m) {
     
     selected = null; selectedHand = null; render();
     if (survivors.length > 1 && playerTypes[turn] === "cpu") startCpuThink();
+}
+
+function showBigMsg(text, type = "out", subText = "") {
+    const overlay = document.getElementById('msg-overlay');
+    overlay.innerHTML = '';
+    
+    // メッセージを表示する時だけ visible にし、それ以外は消す
+    overlay.style.display = "flex"; 
+
+    const div = document.createElement('div');
+    
+    if (type === "win") {
+        div.className = "win-msg";
+        // 勝利時はメッセージをドラッグしたり、その下のボタンを押せるようにする
+        overlay.style.pointerEvents = "none"; 
+        div.style.pointerEvents = "auto"; // メッセージ自体は触れるようにする
+    } else if (type === "out") {
+        div.className = "sudden-death-msg";
+        overlay.style.pointerEvents = "none"; // サドンデス中も盤面操作を邪魔しない
+    } else {
+        div.className = "out-msg";
+        overlay.style.pointerEvents = "none";
+    }
+    
+    if (type === "win") {
+        div.style.position = "absolute";
+        div.style.cursor = "move";
+        
+        let isDragging = false;
+        let offset = { x: 0, y: 0 };
+
+        const startDrag = (e) => {
+            isDragging = true;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            offset.x = div.offsetLeft - clientX;
+            offset.y = div.offsetTop - clientY;
+            div.style.animation = "none"; 
+        };
+
+        const doDrag = (e) => {
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            div.style.left = (clientX + offset.x) + "px";
+            div.style.top = (clientY + offset.y) + "px";
+            div.style.transform = "none"; 
+        };
+
+        const stopDrag = () => { isDragging = false; };
+
+        div.onmousedown = startDrag;
+        window.onmousemove = doDrag;
+        window.onmouseup = stopDrag;
+        div.ontouchstart = startDrag;
+        window.ontouchmove = doDrag;
+        window.ontouchend = stopDrag;
+    }
+
+    const mainText = document.createElement('div');
+    mainText.textContent = text;
+    if (type === "win") {
+        mainText.style.fontSize = "26px";
+        mainText.style.lineHeight = "1.2";
+    }
+    div.appendChild(mainText);
+
+    if (subText) {
+        const subDiv = document.createElement('div');
+        subDiv.style.fontSize = "16px";
+        subDiv.style.marginTop = "12px";
+        subDiv.style.color = "#333";
+        subDiv.style.textAlign = "left";
+        subDiv.style.fontWeight = "bold";
+        subDiv.style.lineHeight = "1.5";
+        subDiv.innerText = subText;
+        div.appendChild(subDiv);
+    }
+
+    overlay.appendChild(div);
+
+    // 【修正】サドンデスなどの一時的なメッセージは3秒で overlay 自体を非表示にする
+    if (type !== "win") { 
+        setTimeout(() => { 
+            overlay.style.display = "none";
+            overlay.innerHTML = '';
+        }, 2000); 
+    }
 }
 
 function undo() {
@@ -871,6 +997,7 @@ function render() {
             hEl.appendChild(d);
         });
     }
+updateStatus();
 }
 
 function updateStatus() {
@@ -1071,18 +1198,43 @@ function simMoveFast(b, m, t, h, d, autoPromote = true) { // 第6引数を追加
 
 function evalBoard(b, me, d, h) {
     if (d[me]) return -10000000;
-    let s = 0;
-    for (let r=0; r<SIZE; r++) {
-        for (let c=0; c<SIZE; c++) {
-            const p = b[r][c]; if(!p) continue;
-            const val = PIECE_VAL[p.type];
-            if (p.owner === me) s += val;
-            else if (d[p.owner]) s += val * 0.5; // 脱落者の駒はボーナス
-            else s -= val * 0.5; // 生存敵の駒は脅威
+    
+    let score = 0;
+    const myKing = findKing(b, me);
+
+    for (let r = 0; r < SIZE; r++) {
+        for (let c = 0; c < SIZE; c++) {
+            const p = b[r][c];
+            if (!p) continue;
+
+            const val = PIECE_VAL[p.type] || 0;
+
+            if (p.owner === me) {
+                // 1. 駒の価値（盤上）
+                score += val;
+
+                // 2. 玉の堅さ（自玉の周りに味方がいれば加点）
+                if (myKing) {
+                    const dist = Math.max(Math.abs(r - myKing.r), Math.abs(c - myKing.c));
+                    if (dist <= 1) score += 200; // 玉の守備ボーナス
+                }
+            } else {
+                // 敵の駒
+                if (!d[p.owner]) {
+                    score -= val * 0.8; // 生存している敵の駒はマイナス
+                } else {
+                    score += val * 0.1; // 陥落したプレイヤーの駒が残っていれば拾う価値あり
+                }
+            }
         }
     }
-    h[me].forEach(p => s += PIECE_VAL[p] * 0.8);
-    return s;
+
+    // 3. 持ち駒の評価
+    h[me].forEach(type => {
+        score += PIECE_VAL[type] * 1.1; // 持ち駒は盤上より少し価値を高くする
+    });
+
+    return score;
 }
 
 function isCheck(b, owner, d) {
@@ -1098,77 +1250,6 @@ function findKing(b, t) {
     return null;
 }
 // 中央に大きなメッセージを表示する関数
-function showBigMsg(text, type = "out", subText = "") {
-    const overlay = document.getElementById('msg-overlay');
-    overlay.innerHTML = '';
-    const div = document.createElement('div');
-    div.className = type === "win" ? "win-msg" : "out-msg";
-    
-    // 【追加】ドラッグ移動のための設定（勝利時のみ）
-    if (type === "win") {
-        div.style.position = "absolute";
-        div.style.cursor = "move";
-        div.style.pointerEvents = "auto"; // クリックやドラッグを有効化
-        
-        let isDragging = false;
-        let offset = { x: 0, y: 0 };
-
-        const startDrag = (e) => {
-            isDragging = true;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            offset.x = div.offsetLeft - clientX;
-            offset.y = div.offsetTop - clientY;
-            div.style.animation = "none"; // ドラッグ中はバウンスを止める
-        };
-
-        const doDrag = (e) => {
-            if (!isDragging) return;
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            div.style.left = (clientX + offset.x) + "px";
-            div.style.top = (clientY + offset.y) + "px";
-            div.style.transform = "none"; // 中央固定解除
-        };
-
-        const stopDrag = () => { isDragging = false; };
-
-        div.onmousedown = startDrag;
-        window.onmousemove = doDrag;
-        window.onmouseup = stopDrag;
-
-        div.ontouchstart = startDrag;
-        window.ontouchmove = doDrag;
-        window.ontouchend = stopDrag;
-    }
-
-    // メインテキスト
-    const mainText = document.createElement('div');
-    mainText.textContent = text;
-    if (type === "win") {
-        mainText.style.fontSize = "26px";
-        mainText.style.lineHeight = "1.2";
-    }
-    div.appendChild(mainText);
-
-    // 順位リスト
-    if (subText) {
-        const subDiv = document.createElement('div');
-        subDiv.style.fontSize = "16px";
-        subDiv.style.marginTop = "12px";
-        subDiv.style.color = "#333";
-        subDiv.style.textAlign = "left";
-        subDiv.style.fontWeight = "bold";
-        subDiv.style.lineHeight = "1.5";
-        subDiv.innerText = subText;
-        div.appendChild(subDiv);
-    }
-
-    overlay.appendChild(div);
-    if (type !== "win") { 
-        setTimeout(() => { if(div.parentNode) div.remove(); }, 2000); 
-    }
-}
 
 function setupDraggable(el) {
     let isDragging = false, offset = { x: 0, y: 0 };
